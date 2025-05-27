@@ -6,19 +6,7 @@ import { useTheme } from './theme/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { getMoviesByType } from './storage/storage';
 import { useMovies } from './context/MoviesContext';
-
-
-interface Movie {
-  id: string;
-  title: string;
-  year: string;
-  genres: string[];
-  watched: boolean;
-  dateAdded: string;
-  isFavorite?: boolean;
-  rating?: number;
-  review?: string;
-}
+import { Movie } from './types/movie';
 
 export default function WatchlistScreen() {
   const { movies, updateMovie, addMovie, deleteMovie } = useMovies();
@@ -41,6 +29,7 @@ export default function WatchlistScreen() {
   const [currentRating, setCurrentRating] = useState(5.0);
   const [currentReview, setCurrentReview] = useState("");
   const [ratingInput, setRatingInput] = useState("");
+  const [ratingError, setRatingError] = useState("");
 
   const GENRES = ["Romance", "Action", "Comedy", "Horror", "Drama", "Sci-Fi", "Thriller", "Fantasy", "Mystery", "Musical"];
 
@@ -87,7 +76,11 @@ export default function WatchlistScreen() {
   const toggleWatched = (id: string) => {
     const movie = movies.find(m => m.id === id);
     if (movie) {
-      updateMovie({ ...movie, watched: !movie.watched });
+      updateMovie({ 
+        ...movie, 
+        watched: !movie.watched,
+        dateWatched: !movie.watched ? new Date().toISOString() : undefined
+      });
     }
   };
 
@@ -139,55 +132,72 @@ export default function WatchlistScreen() {
       style={[styles.movieCard, { backgroundColor: theme.surface }]}
       onPress={() => openEditModal(item)}
     >
-      <View>
-        <Text style={[styles.movieTitle, { color: theme.text }]}>{item.title} ({item.year})</Text>
-        <View style={styles.genreRow}>
-          {item.genres.map(genre => (
-            <Text key={genre} style={[styles.movieGenre, { 
-              backgroundColor: theme.background,
-              color: theme.text 
-            }]}>{genre}</Text>
-          ))}
+      <View style={styles.movieContent}>
+        <View style={styles.mainContent}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.movieTitle, { color: theme.text }]}>{item.title} ({item.year})</Text>
+            <View style={styles.iconContainer}>
+              {tab === "Watched" && (
+                <>
+                  <TouchableOpacity
+                    style={styles.favoriteButton}
+                    onPress={() => toggleFavorite(item.id)}
+                  >
+                    <Text style={[
+                      styles.favoriteIcon,
+                      { color: theme.text },
+                      item.isFavorite && { color: '#ff0000' }
+                    ]}>
+                      {item.isFavorite ? '♥' : '♡'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.ratingButton}
+                    onPress={() => {
+                      setSelectedMovie(item);
+                      setCurrentRating(item.rating || 5.0);
+                      setRatingInput(item.rating?.toString() || "5.0");
+                      setCurrentReview(item.review || "");
+                      setShowRatingModal(true);
+                    }}
+                  >
+                    <Text style={styles.starIcon}>⭐</Text>
+                    <Text style={[styles.ratingText, { color: theme.text }]}>
+                      {item.rating?.toFixed(1) || '-'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+          <View style={styles.genreRow}>
+            {item.genres.map(genre => (
+              <Text key={genre} style={[styles.movieGenre, { 
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderWidth: 1,
+                borderColor: theme.border
+              }]}>{genre}</Text>
+            ))}
+          </View>
+          <View style={styles.dateContainer}>
+            <Text style={[styles.dateText, { color: theme.textSecondary }]}>
+              Added: {new Date(item.dateAdded).toLocaleDateString()}
+            </Text>
+            {item.watched && item.dateWatched && (
+              <Text style={[styles.dateText, { color: theme.textSecondary }]}>
+                Watched: {new Date(item.dateWatched).toLocaleDateString()}
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
-      <View style={styles.movieActions}>
-        {tab === "Pending" ? (
+        {tab === "Pending" && (
           <TouchableOpacity
             style={[styles.watchedButton, { backgroundColor: theme.primary }]}
             onPress={() => toggleWatched(item.id)}
           >
             <Text style={styles.watchedButtonText}>Mark Watched</Text>
           </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity
-              style={styles.favoriteButton}
-              onPress={() => toggleFavorite(item.id)}
-            >
-              <Text style={[
-                styles.favoriteIcon,
-                { color: theme.text },
-                item.isFavorite && { color: '#ff0000' }
-              ]}>
-                {item.isFavorite ? '♥' : '♡'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.ratingButton}
-              onPress={() => {
-                setSelectedMovie(item);
-                setCurrentRating(item.rating || 5.0);
-                setRatingInput(item.rating?.toString() || "5.0");
-                setCurrentReview(item.review || "");
-                setShowRatingModal(true);
-              }}
-            >
-              <Text style={styles.starIcon}>⭐</Text>
-              <Text style={[styles.ratingText, { color: theme.text }]}>
-                {item.rating?.toFixed(1) || '-'}
-              </Text>
-            </TouchableOpacity>
-          </>
         )}
       </View>
     </TouchableOpacity>
@@ -222,17 +232,30 @@ export default function WatchlistScreen() {
 
   // Add this function to handle rating updates
   const handleUpdateRating = (id: string) => {
-    const rating = parseFloat(ratingInput);
-    if (isNaN(rating) || rating < 0 || rating > 10) {
-      return; // Don't update if rating is invalid
+    const parsedRating = parseFloat(ratingInput);
+    
+    // Validate rating
+    if (ratingInput && (isNaN(parsedRating) || parsedRating < 0 || parsedRating > 10)) {
+      setRatingError("Rating must be between 0 and 10");
+      return;
     }
     
     const movie = movies.find(m => m.id === id);
     if (movie) {
-      updateMovie({ ...movie, rating, review: currentReview });
+      updateMovie({ ...movie, rating: parsedRating || movie.rating, review: currentReview });
     }
     setShowRatingModal(false);
     setRatingInput(""); // Reset the input
+    setRatingError(""); // Clear any errors
+  };
+
+  const handleRatingChange = (value: string) => {
+    setRatingInput(value);
+    setRatingError(""); // Clear error when user starts typing
+    const rating = parseFloat(value);
+    if (!isNaN(rating) && rating >= 0 && rating <= 10) {
+      setCurrentRating(rating);
+    }
   };
 
   return (
@@ -397,8 +420,8 @@ export default function WatchlistScreen() {
               placeholderTextColor={theme.text}
               value={title}
               onChangeText={setTitle}
-      />
-      <TextInput
+            />
+            <TextInput
               style={[styles.input, { 
                 backgroundColor: theme.background,
                 borderColor: theme.primary,
@@ -411,13 +434,27 @@ export default function WatchlistScreen() {
               keyboardType="numeric"
             />
             {renderGenreSelector()}
+            <View style={styles.dateInfoContainer}>
+              <Text style={[styles.dateInfoText, { color: theme.text }]}>
+                Added: {selectedMovie ? new Date(selectedMovie.dateAdded).toLocaleDateString() : ''}
+              </Text>
+              {selectedMovie?.watched && selectedMovie?.dateWatched && (
+                <Text style={[styles.dateInfoText, { color: theme.text }]}>
+                  Watched: {new Date(selectedMovie.dateWatched).toLocaleDateString()}
+                </Text>
+              )}
+            </View>
             <View style={styles.watchedToggle}>
               <Text style={[styles.watchedLabel, { color: theme.text }]}>Mark as Watched</Text>
               <Switch
                 value={selectedMovie?.watched}
                 onValueChange={(value) => {
                   if (selectedMovie) {
-                    updateMovie({ ...selectedMovie, watched: value });
+                    updateMovie({ 
+                      ...selectedMovie, 
+                      watched: value,
+                      dateWatched: value ? new Date().toISOString() : undefined
+                    });
                   }
                 }}
                 trackColor={{ false: '#ddd', true: '#6366f1' }}
@@ -470,18 +507,16 @@ export default function WatchlistScreen() {
                   color: theme.text
                 }]}
                 value={ratingInput}
-                onChangeText={(value) => {
-                  setRatingInput(value);
-                  const rating = parseFloat(value);
-                  if (!isNaN(rating) && rating >= 0 && rating <= 10) {
-                    setCurrentRating(rating);
-                  }
-                }}
+                onChangeText={handleRatingChange}
                 keyboardType="decimal-pad"
                 placeholder="Rating"
                 maxLength={4}
               />
-              <Text style={[styles.ratingHint, { color: theme.text }]}>Rating must be between 0 and 10</Text>
+              <Text style={[styles.ratingHint, { 
+                color: ratingError ? theme.error : theme.text + '80'
+              }]}>
+                {ratingError || "Rating must be between 0 and 10"}
+              </Text>
             </View>
             <TextInput
               style={[styles.reviewInput, { 
@@ -577,10 +612,30 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  movieContent: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mainContent: {
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   movieTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
+  },
+  iconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   genreRow: {
     flexDirection: 'row',
@@ -595,6 +650,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 4,
     marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   watchedButton: {
     backgroundColor: '#6366f1',
@@ -726,35 +783,24 @@ const styles = StyleSheet.create({
   deleteButton: {
     backgroundColor: '#ef4444',
   },
-  movieActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   favoriteButton: {
-    padding: 3,
+    marginRight: 8,
   },
   favoriteIcon: {
-    fontSize: 30,
-    color: '#666',
-  },
-  favoriteIconActive: {
-    color: '#ef4444',
+    fontSize: 24,
   },
   ratingButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
-    padding: 8,
   },
   starIcon: {
-    fontSize: 22,
+    fontSize: 20,
     color: '#fbbf24',
     marginRight: 4,
   },
   ratingText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
   },
   ratingContainer: {
     alignItems: 'center',
@@ -785,5 +831,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 4,
+  },
+  dateContainer: {
+    marginTop: 8,
+  },
+  dateText: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  dateInfoContainer: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  dateInfoText: {
+    fontSize: 14,
+    marginBottom: 4,
   },
 });

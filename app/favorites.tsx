@@ -2,20 +2,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, Share, Modal, TextI
 import { useState } from "react";
 import { useTheme } from './theme/ThemeContext';
 import { useMovies } from './context/MoviesContext';
-
-interface Movie {
-  id: string;
-  title: string;
-  year: string;
-  genres: string[];
-  watched: boolean;
-  dateAdded: string;
-  isFavorite?: boolean;
-  rating?: number;
-  notes?: string;
-  rewatch?: boolean;
-  review?: string;
-}
+import { Movie } from './types/movie';
 
 export default function FavoritesScreen() {
   const { movies, updateMovie } = useMovies();
@@ -25,6 +12,8 @@ export default function FavoritesScreen() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [editedReview, setEditedReview] = useState("");
   const [editedRating, setEditedRating] = useState("");
+  const [ratingError, setRatingError] = useState("");
+  const [currentRating, setCurrentRating] = useState(0);
 
   const favoriteMovies = movies
     .filter(movie => movie.isFavorite)
@@ -52,14 +41,32 @@ export default function FavoritesScreen() {
   const handleSaveReview = () => {
     if (!selectedMovie) return;
     
+    const parsedRating = parseFloat(editedRating);
+    
+    // Validate rating
+    if (editedRating && (isNaN(parsedRating) || parsedRating < 0 || parsedRating > 10)) {
+      setRatingError("Rating must be between 0 and 10");
+      return;
+    }
+    
     updateMovie({
       ...selectedMovie,
-      rating: parseFloat(editedRating) || selectedMovie.rating,
+      rating: parsedRating || selectedMovie.rating,
       review: editedReview
     });
 
     setShowReviewModal(false);
     setSelectedMovie(null);
+    setRatingError(""); // Clear any errors
+  };
+
+  const handleRatingChange = (text: string) => {
+    setEditedRating(text);
+    setRatingError(""); // Clear error when user starts typing
+    const rating = parseFloat(text);
+    if (!isNaN(rating) && rating >= 0 && rating <= 10) {
+      setCurrentRating(rating);
+    }
   };
 
   const renderMovie = ({ item }: { item: Movie }) => (
@@ -68,7 +75,7 @@ export default function FavoritesScreen() {
       onPress={() => {
         setSelectedMovie(item);
         setEditedReview(item.review || "");
-        setEditedRating(item.rating?.toString() || "");
+        setEditedRating(item.rating?.toString() || "5.0");
         setShowReviewModal(true);
       }}
     >
@@ -77,7 +84,7 @@ export default function FavoritesScreen() {
           <Text style={[styles.movieTitle, { color: theme.text }]}>
             <Text style={styles.boldTitle}>{item.title}</Text> ({item.year})
           </Text>
-          <Text style={[styles.movieRating, { color: theme.text }]}>⭐ {item.rating || "5.0"}</Text>
+          <Text style={[styles.movieRating, { color: theme.text }]}>⭐ {item.rating?.toFixed(1) || "-"}</Text>
         </View>
       </View>
       
@@ -155,13 +162,16 @@ export default function FavoritesScreen() {
                   borderColor: theme.primary + '40'
                 }]}
                 value={editedRating}
-                onChangeText={setEditedRating}
-                placeholder="Rating (0-10)"
+                onChangeText={handleRatingChange}
+                placeholder="Rating"
                 keyboardType="decimal-pad"
                 placeholderTextColor={theme.text + '60'}
+                maxLength={4}
               />
-              <Text style={[styles.ratingHint, { color: theme.text + '80' }]}>
-                Rating must be between 0 and 10
+              <Text style={[styles.ratingHint, { 
+                color: ratingError ? theme.error : theme.text + '80'
+              }]}>
+                {ratingError || "Rating must be between 0 and 10"}
               </Text>
             </View>
             

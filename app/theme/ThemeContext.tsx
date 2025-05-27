@@ -1,76 +1,84 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useColorScheme } from 'react-native';
 
-export const lightTheme = {
-  primary: '#2563EB',    // Royal Blue
-  secondary: '#10B981',  // Emerald Green
-  background: '#FFFFFF', // White
-  surface: '#F3F4F6',   // Light Gray
-  text: '#1F2937',      // Dark Gray
-  accent: '#F59E0B',    // Amber
-  error: '#EF4444',     // Red
-  success: '#10B981',   // Emerald Green
+interface Theme {
+  primary: string;
+  secondary: string;
+  accent: string;
+  surface: string;
+  background: string;
+  text: string;
+  textSecondary: string;
+  success: string;
+  error: string;
+  gradient: string[];
+  card: string;
+  border: string;
+}
+
+const lightTheme: Theme = {
+  primary: '#6C63FF', // Main purple
+  secondary: '#FF63B8', // Pink
+  accent: '#63B3FF', // Blue
+  surface: '#FFFFFF',
+  background: '#F8F9FF',
+  text: '#2D3748',
+  textSecondary: 'rgba(45, 55, 72, 0.7)',
+  success: '#4FD1C5',
+  error: '#FC8181',
+  gradient: ['#6C63FF', '#FF63B8', '#63B3FF'],
+  card: 'rgba(255, 255, 255, 0.9)',
+  border: 'rgba(108, 99, 255, 0.2)'
 };
 
-export const darkTheme = {
-  primary: '#3B82F6',    // Lighter Blue
-  secondary: '#34D399',  // Mint Green
-  background: '#111827', // Very Dark Blue-Gray
-  surface: '#1F2937',   // Dark Gray
-  text: '#F9FAFB',      // Off-White
-  accent: '#FBBF24',    // Bright Amber
-  error: '#F87171',     // Light Red
-  success: '#34D399',   // Mint Green
+const darkTheme: Theme = {
+  primary: '#8B80FF', // Lighter purple
+  secondary: '#FF80C9', // Lighter pink
+  accent: '#80C9FF', // Lighter blue
+  surface: '#1A202C',
+  background: '#171923',
+  text: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.7)',
+  success: '#4FD1C5',
+  error: '#FC8181',
+  gradient: ['#8B80FF', '#FF80C9', '#80C9FF'],
+  card: 'rgba(26, 32, 44, 0.9)',
+  border: 'rgba(139, 128, 255, 0.2)'
 };
 
-type Theme = typeof lightTheme;
-type ThemeContextType = {
+interface ThemeContextType {
   theme: Theme;
   isDark: boolean;
   toggleTheme: () => void;
-};
+}
 
-export const ThemeContext = createContext<ThemeContextType>({
-  theme: lightTheme,
-  isDark: false,
-  toggleTheme: () => {},
-});
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isDark, setIsDark] = useState(false);
+  const systemColorScheme = useColorScheme();
+  const [isDark, setIsDark] = useState(systemColorScheme === 'dark');
 
   useEffect(() => {
-    loadThemePreference();
-  }, []);
+    setIsDark(systemColorScheme === 'dark');
+  }, [systemColorScheme]);
 
-  const loadThemePreference = async () => {
-    try {
-      const savedTheme = await AsyncStorage.getItem('isDarkMode');
-      setIsDark(savedTheme === 'true');
-    } catch (error) {
-      console.error('Failed to load theme preference', error);
-    }
-  };
+  const theme = isDark ? darkTheme : lightTheme;
 
-  const toggleTheme = async () => {
-    try {
-      const newValue = !isDark;
-      setIsDark(newValue);
-      await AsyncStorage.setItem('isDarkMode', String(newValue));
-    } catch (error) {
-      console.error('Failed to save theme preference', error);
-    }
+  const toggleTheme = () => {
+    setIsDark(!isDark);
   };
 
   return (
-    <ThemeContext.Provider value={{
-      theme: isDark ? darkTheme : lightTheme,
-      isDark,
-      toggleTheme,
-    }}>
+    <ThemeContext.Provider value={{ theme, isDark, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-export const useTheme = () => useContext(ThemeContext); 
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
+}; 

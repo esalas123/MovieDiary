@@ -32,7 +32,7 @@ export default function SettingsScreen() {
         </Text>
         <View style={[styles.infoItem, { borderBottomColor: theme.background }]}>
           <Text style={[styles.infoLabel, { color: theme.text }]}>Version</Text>
-          <Text style={[styles.infoValue, { color: theme.text }]}>1.0.0</Text>
+          <Text style={[styles.infoValue, { color: theme.text }]}>1.1.0</Text>
         </View>
         <View style={[styles.infoItem, { borderBottomColor: theme.background }]}>
           <Text style={[styles.infoLabel, { color: theme.text }]}>Developer</Text>

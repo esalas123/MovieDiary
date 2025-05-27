@@ -27,6 +27,7 @@ function TabsNavigator() {
           backgroundColor: theme.surface,
           borderTopColor: theme.background,
         },
+        tabBarShowLabel: false,
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: isDark ? '#6B7280' : '#9CA3AF',
       }}
@@ -35,22 +36,7 @@ function TabsNavigator() {
         name="index"
         options={{
           title: "Home",
-          headerTitle: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Image
-                source={require('../assets/images/logo1.png')}
-                style={{ width: 35, height: 35, marginRight: 8 }}
-                resizeMode="contain"
-              />
-              <Text style={{
-                 color: theme.text,
-                 fontSize: 20,
-                 fontWeight: 'bold' // Changed from '600' to 'bold'
-               }}>
-                Movie Diary
-              </Text>
-            </View>
-          ),
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <Ionicons name="home" size={24} color={color} />
           ),
@@ -148,7 +134,6 @@ function TabsNavigator() {
 }
 
 export default function Layout() {
-  const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

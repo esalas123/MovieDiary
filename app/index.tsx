@@ -1,13 +1,14 @@
 //Home
 
-import React, { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import React, { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Modal, Platform, Image } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect, useCallback } from "react";
 import { useTheme } from './theme/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useMovies } from './context/MoviesContext';
-import Icon from 'react-native-vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 interface Movie {
   id: string;
@@ -18,6 +19,7 @@ interface Movie {
   dateAdded: string;
   isFavorite?: boolean;
   hideFromRecent?: boolean;
+  dateWatched?: string;
 }
 
 export default function HomeScreen() {
@@ -37,6 +39,10 @@ export default function HomeScreen() {
   });
   const { theme } = useTheme();
   const [pressedId, setPressedId] = useState<string | null>(null);
+  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showListModal, setShowListModal] = useState(false);
+  const [selectedList, setSelectedList] = useState<'Watched' | 'Pending' | 'Favorites' | null>(null);
   
   // Function to update summary counts
   const updateSummary = (movieList: Movie[]) => {
@@ -129,12 +135,20 @@ export default function HomeScreen() {
       <TouchableOpacity 
         key={index} 
         style={styles.movieItemContainer}
-        onPress={() => isRecentAddition && setPressedId(pressedId === item.id ? null : item.id)}
+        onPress={() => {
+          setSelectedMovie(item);
+          setShowDetailsModal(true);
+        }}
       >
         <View style={[styles.movieItemAccent, { backgroundColor: accentColors.recent }]} />
         <View style={[styles.movieItem, { backgroundColor: theme.surface }]}>
           <View style={styles.movieContent}>
-            <Text style={[styles.movieItemText, { color: theme.text }]}>{item.title}</Text>
+            <View style={styles.movieDetails}>
+              <Text style={[styles.movieItemText, { color: theme.text }]}>{item.title}</Text>
+              <Text style={[styles.dateAddedText, { color: theme.textSecondary }]}>
+                Added: {new Date(item.dateAdded).toLocaleDateString()}
+              </Text>
+            </View>
             <Text style={[
               styles.status, 
               { color: item.watched ? theme.success : theme.error }
@@ -180,98 +194,153 @@ export default function HomeScreen() {
     );
   };
 
+  // Add this function to get filtered movies based on selected list
+  const getFilteredListMovies = () => {
+    if (!selectedList) return [];
+    switch (selectedList) {
+      case 'Watched':
+        return movies.filter(m => m.watched);
+      case 'Pending':
+        return movies.filter(m => !m.watched);
+      case 'Favorites':
+        return movies.filter(m => m.isFavorite);
+      default:
+        return [];
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Status Bar Space */}
+      <View style={styles.statusBar} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Image
+          source={require('../assets/images/logo1.png')}
+          style={styles.appIcon}
+          resizeMode="contain"
+        />
+        <Text style={[styles.appTitle, { color: theme.text }]}>Movie Diary</Text>
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <TextInput
           placeholder="Search movies..."
           value={searchQuery}
           onChangeText={setSearchQuery}
-          style={[styles.searchBar, { 
-            backgroundColor: theme.surface,
-            color: theme.text 
+          style={[styles.searchInput, { 
+            backgroundColor: theme.card,
+            color: theme.text,
+            borderColor: theme.border
           }]}
-          placeholderTextColor={theme.text}
+          placeholderTextColor={theme.textSecondary}
         />
         <TouchableOpacity 
-          style={[styles.searchIcon, { backgroundColor: accentColors.continue }]}
+          style={[styles.searchBtn, { backgroundColor: theme.primary }]}
           onPress={() => setSearchQuery("")}
         >
-          <Icon 
+          <Ionicons 
             name={searchQuery ? "close" : "search"}
-            size={18} 
+            size={24} 
             color="white"
           />
         </TouchableOpacity>
       </View>
 
-      {/* Scrollable Content */}
       <ScrollView 
         showsVerticalScrollIndicator={false}
         style={styles.scrollContainer}
       >
-        {/* Show summary and goal sections only when not searching */}
-        {!searchQuery && (
+        {!searchQuery ? (
           <>
-            {/* Watchlist Summary */}
-            <View style={[styles.summaryContainer, { backgroundColor: theme.surface }]}>
+            {/* Stats Cards */}
+            <View style={styles.statsContainer}>
               {Object.entries(watchlistSummary).map(([key, value]) => (
-                <View key={key} style={styles.summaryItem}>
-                  <View style={[styles.summaryCircle, { backgroundColor: accentColors.summary[key as keyof typeof watchlistSummary] }]}>
-                    <Text style={styles.summaryNumber}>{value}</Text>
-                  </View>
-                  <Text style={[styles.summaryLabel, { color: theme.text }]}>{key}</Text>
-                </View>
+                <TouchableOpacity 
+                  key={key}
+                  style={[styles.statCard, { 
+                    backgroundColor: theme.card,
+                    borderColor: theme.border
+                  }]}
+                  onPress={() => {
+                    setSelectedList(key as 'Watched' | 'Pending' | 'Favorites');
+                    setShowListModal(true);
+                  }}
+                >
+                  <Text style={[styles.statNumber, { color: theme[key === 'Watched' ? 'primary' : key === 'Pending' ? 'secondary' : 'accent'] }]}>
+                    {value}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{key}</Text>
+                </TouchableOpacity>
               ))}
             </View>
 
-            {/* Monthly Goal Progress */}
-            <View style={[styles.progressContainer, { backgroundColor: theme.surface }]}>
-              <View style={styles.progressHeader}>
-                <View style={styles.goalTitleContainer}>
-                  <Text style={[styles.progressTitle, { color: theme.text }]}>Monthly Goal</Text>
-                  <TouchableOpacity 
-                    onPress={() => setIsGoalModalVisible(true)}
-                    style={styles.editGoalButton}
-                  >
-                    <Text style={[styles.editGoalText, { color: theme.primary }]}>Edit</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={[styles.progressSubtitle, { color: theme.text }]}>
-                  {monthlyGoal.current}/{monthlyGoal.target} movies watched
-                </Text>
+            {/* Monthly Goal */}
+            <View style={[styles.goalSection, { 
+              backgroundColor: theme.card,
+              borderColor: theme.border
+            }]}>
+              <View style={styles.goalHeader}>
+                <Text style={[styles.goalTitle, { color: theme.text }]}>Monthly Goal</Text>
+                <TouchableOpacity 
+                  style={[styles.editBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => setIsGoalModalVisible(true)}
+                >
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </TouchableOpacity>
               </View>
-              <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBar, { backgroundColor: theme.surface }]}>
-                  <View 
-                    style={[
-                      styles.progressFill, 
-                      { 
-                        backgroundColor: accentColors.progress,
-                        width: `${monthlyGoal.percentage}%`
-                      }
-                    ]} 
-                  />
-                </View>
+              <Text style={[styles.goalProgress, { color: theme.textSecondary }]}>
+                {monthlyGoal.current}/{monthlyGoal.target} movies watched
+              </Text>
+              <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+                <LinearGradient
+                  colors={[theme.gradient[0], theme.gradient[1], theme.gradient[2]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.progressFill, { width: `${monthlyGoal.percentage}%` }]}
+                />
                 <Text style={[styles.progressPercentage, { color: theme.text }]}>
                   {monthlyGoal.percentage}%
                 </Text>
               </View>
             </View>
           </>
-        )}
+        ) : null}
 
-        {/* Show either search results or recent additions */}
-        <View style={styles.sectionHeader}>
-          <View style={[styles.sectionAccent, { backgroundColor: accentColors.recent }]} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            {searchQuery ? 'Search Results' : 'Recent Additions'}
-          </Text>
+        {/* Recent Movies or Search Results */}
+        <View style={[styles.recentSection, searchQuery && styles.searchResultsSection]}>
+          <View style={styles.sectionTitleContainer}>
+            <LinearGradient
+              colors={[theme.gradient[0], theme.gradient[1], theme.gradient[2]]}
+              style={styles.sectionTitleBar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+            />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              {searchQuery ? 'Search Results' : 'Recent Additions'}
+            </Text>
+          </View>
+          
+          {getFilteredMovies().length > 0 ? (
+            getFilteredMovies().map((item, index) => renderMovieItem(item, index))
+          ) : (
+            <View style={[styles.emptyState, { backgroundColor: theme.card }]}>
+              <Text style={styles.emptyIcon}>🎭</Text>
+              <Text style={[styles.emptyText, { color: theme.text }]}>
+                {searchQuery ? 'No movies found' : 'No recent additions'}
+              </Text>
+              <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                {searchQuery ? 'Try a different search term' : 'Start adding movies to see them here'}
+              </Text>
+            </View>
+          )}
         </View>
-        {getFilteredMovies().map((item, index) => renderMovieItem(item, index))}
       </ScrollView>
 
+      {/* Floating Action Button */}
+      
       {/* Goal Edit Modal */}
       <Modal
         animationType="fade"
@@ -280,16 +349,21 @@ export default function HomeScreen() {
         onRequestClose={() => setIsGoalModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Monthly Goal</Text>
+          <View style={[styles.modalContent, { 
+            backgroundColor: theme.card,
+            borderColor: theme.border
+          }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              Edit Monthly Goal
+            </Text>
             <TextInput
               style={[styles.modalInput, { 
                 backgroundColor: theme.background,
                 color: theme.text,
-                borderColor: theme.primary
+                borderColor: theme.border
               }]}
               placeholder="Enter new target"
-              placeholderTextColor={theme.text}
+              placeholderTextColor={theme.textSecondary}
               keyboardType="numeric"
               value={newGoalTarget}
               onChangeText={setNewGoalTarget}
@@ -299,15 +373,158 @@ export default function HomeScreen() {
                 style={[styles.modalButton, { backgroundColor: theme.surface }]}
                 onPress={() => setIsGoalModalVisible(false)}
               >
-                <Text style={[styles.modalButtonText, { color: theme.text }]}>Cancel</Text>
+                <Text style={[styles.modalButtonText, { color: theme.text }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modalButton, { backgroundColor: theme.primary }]}
                 onPress={handleUpdateGoal}
               >
-                <Text style={[styles.modalButtonText, { color: 'white' }]}>Save</Text>
+                <Text style={[styles.modalButtonText, { color: 'white' }]}>
+                  Save
+                </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Movie Details Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showDetailsModal}
+        onRequestClose={() => setShowDetailsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { 
+            backgroundColor: theme.card,
+            borderColor: theme.border
+          }]}>
+            {selectedMovie && (
+              <>
+                <View style={styles.detailsHeader}>
+                  <Text style={[styles.detailsTitle, { color: theme.text }]}>
+                    {selectedMovie.title}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setShowDetailsModal(false)}
+                  >
+                    <Ionicons name="close" size={24} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.detailsContent}>
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Year Released:</Text>
+                    <Text style={[styles.detailValue, { color: theme.text }]}>{selectedMovie.year}</Text>
+                  </View>
+
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Status:</Text>
+                    <Text style={[
+                      styles.detailValue, 
+                      { color: selectedMovie.watched ? theme.success : theme.error }
+                    ]}>
+                      {selectedMovie.watched ? 'Watched' : 'Pending'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.genresSection}>
+                    <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Genres:</Text>
+                    <View style={styles.genreChips}>
+                      {selectedMovie.genres.map((genre, index) => (
+                        <View 
+                          key={index}
+                          style={[styles.genreChip, { backgroundColor: theme.primary + '20' }]}
+                        >
+                          <Text style={[styles.genreChipText, { color: theme.primary }]}>
+                            {genre}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Date Added:</Text>
+                    <Text style={[styles.detailValue, { color: theme.text }]}>
+                      {new Date(selectedMovie.dateAdded).toLocaleDateString()}
+                    </Text>
+                  </View>
+
+                  {selectedMovie.watched && selectedMovie.dateWatched && (
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Date Watched:</Text>
+                      <Text style={[styles.detailValue, { color: theme.text }]}>
+                        {new Date(selectedMovie.dateWatched).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Movie List Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showListModal}
+        onRequestClose={() => {
+          setShowListModal(false);
+          setSelectedList(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { 
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+            maxHeight: '80%'
+          }]}>
+            <View style={styles.listModalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                {selectedList} Movies
+              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setShowListModal(false);
+                  setSelectedList(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.listModalContent}>
+              {getFilteredListMovies().map((movie) => (
+                <TouchableOpacity
+                  key={movie.id}
+                  style={[styles.listMovieItem, { borderBottomColor: theme.border }]}
+                  onPress={() => {
+                    setSelectedMovie(movie);
+                    setShowListModal(false);
+                    setShowDetailsModal(true);
+                  }}
+                >
+                  <Text style={[styles.listMovieTitle, { color: theme.text }]}>
+                    {movie.title} ({movie.year})
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {getFilteredListMovies().length === 0 && (
+                <View style={styles.emptyListState}>
+                  <Text style={[styles.emptyListText, { color: theme.textSecondary }]}>
+                    No movies in this list
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -318,163 +535,178 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  statusBar: {
+    height: Platform.OS === 'ios' ? 44 : 0,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 20,
   },
+  appIcon: {
+    width: 45,
+    height: 45,
+    marginRight: 15,
+  },
+  appIconText: {
+    fontSize: 24,
+  },
+  appTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
   searchContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    alignItems: 'center',
+    margin: 20,
+    position: 'relative',
   },
-  searchBar: {
-    flex: 1,
-    padding: 15,
+  searchInput: {
+    width: '100%',
+    padding: 18,
     paddingRight: 50,
-    borderRadius: 15,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-    elevation: 3,
+    borderRadius: 20,
     fontSize: 16,
-    borderWidth: 0,
-    zIndex: 1,
+    borderWidth: 2,
   },
-  searchIcon: {
+  searchBtn: {
     position: 'absolute',
-    right: 0,
-    height: 50,
-    width: 50,
-    borderRadius: 15,
-    justifyContent: 'center',
+    right: 8,
+    top: '50%',
+    transform: [{ translateY: -20 }],
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
-    zIndex: 2,
-  },
-  searchIconText: {
-    color: 'white',
-    fontSize: 20,
+    justifyContent: 'center',
   },
   scrollContainer: {
     flex: 1,
   },
-  summaryContainer: {
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 20,
+  },
+  statCard: {
+    flex: 1,
     borderRadius: 20,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-    elevation: 3,
+    padding: 20,
+    marginHorizontal: 5,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  statNumber: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  goalSection: {
+    margin: 20,
+    borderRadius: 20,
+    padding: 25,
+    borderWidth: 1,
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 20,
   },
-  summaryItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  summaryCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  summaryNumber: {
-    fontSize: 24,
+  goalTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
   },
-  summaryLabel: {
+  editBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  editBtnText: {
+    color: 'white',
     fontSize: 14,
-    marginTop: 8,
-    textTransform: 'capitalize',
     fontWeight: '600',
   },
-  progressContainer: {
-    padding: 20,
-    borderRadius: 20,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-    elevation: 3,
-    marginBottom: 20,
-  },
-  progressHeader: {
+  goalProgress: {
+    fontSize: 16,
     marginBottom: 15,
   },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  progressSubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  progressBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   progressBar: {
-    flex: 1,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
+    height: 8,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 10,
   },
   progressPercentage: {
+    position: 'absolute',
+    right: 0,
+    top: -25,
     fontSize: 14,
     fontWeight: '600',
-    width: 40,
-    textAlign: 'right',
   },
-  sectionHeader: {
+  recentSection: {
+    margin: 20,
+    marginBottom: 100,
+  },
+  sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 25,
-    marginBottom: 12,
+    marginBottom: 20,
   },
-  sectionAccent: {
-    width: 8,
-    height: 30,
-    borderRadius: 4,
+  sectionTitleBar: {
+    width: 4,
+    height: 24,
+    borderRadius: 2,
     marginRight: 12,
   },
   sectionTitle: {
     fontSize: 22,
     fontWeight: 'bold',
   },
-  movieItemContainer: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  movieItemAccent: {
-    width: 6,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-  },
-  movieItem: {
-    flex: 1,
-    padding: 16,
-    borderTopRightRadius: 12,
-    borderBottomRightRadius: 12,
-    boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
-    elevation: 2,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyState: {
     alignItems: 'center',
+    padding: 40,
+    borderRadius: 20,
   },
-  movieItemText: {
-    fontSize: 16,
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 20,
+    opacity: 0.3,
+  },
+  emptyText: {
+    fontSize: 18,
     fontWeight: '500',
+    marginBottom: 10,
   },
-  goalTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  editGoalButton: {
-    marginLeft: 10,
-    padding: 5,
-  },
-  editGoalText: {
+  emptySubtext: {
     fontSize: 14,
-    fontWeight: '600',
+    opacity: 0.7,
+  },
+  floatingBtn: {
+    position: 'absolute',
+    bottom: 100,
+    right: 30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
+  },
+  floatingBtnGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingBtnText: {
+    color: 'white',
+    fontSize: 32,
+    marginTop: -2,
   },
   modalOverlay: {
     flex: 1,
@@ -485,9 +717,8 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '80%',
     padding: 20,
-    borderRadius: 15,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.25)',
-    elevation: 5,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   modalTitle: {
     fontSize: 18,
@@ -518,8 +749,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  deleteButton: {
-    padding: 8,
+  movieItemContainer: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  movieItemAccent: {
+    width: 6,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+  },
+  movieItem: {
+    flex: 1,
+    padding: 16,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+    elevation: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   movieContent: {
     flex: 1,
@@ -527,10 +775,117 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  movieDetails: {
+    flex: 1,
+  },
+  movieItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  dateAddedText: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
   status: {
     fontSize: 14,
     padding: 5,
     borderRadius: 5,
     marginLeft: 10,
+  },
+  goalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editGoalButton: {
+    marginLeft: 10,
+    padding: 5,
+  },
+  editGoalText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  detailsTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 10,
+  },
+  closeButton: {
+    padding: 5,
+  },
+  detailsContent: {
+    gap: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detailLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  genresSection: {
+    gap: 8,
+  },
+  genreChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  genreChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  genreChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  searchResultsSection: {
+    marginTop: 0,
+  },
+  listModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 15,
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  listModalContent: {
+    flex: 1,
+  },
+  listMovieItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  listMovieTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  emptyListState: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyListText: {
+    fontSize: 16,
   },
 });

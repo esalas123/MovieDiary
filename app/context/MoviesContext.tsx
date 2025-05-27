@@ -8,6 +8,7 @@ interface Movie {
   genres: string[];
   watched: boolean;
   dateAdded: string;
+  dateWatched?: string;
   isFavorite?: boolean;
   rating?: number;
   review?: string;
